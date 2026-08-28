@@ -13,38 +13,104 @@
   table { width:100%; border-collapse:collapse; margin-top:12px; }
   th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #444; }
   .del { background:#c0392b; padding:4px 10px; font-size:12px; }
-  #status { margin-top:8px; font-size:13px; color:#8fd; }
+  #status, #pointStatus { margin-top:8px; font-size:13px; color:#8fd; }
+  #loginBox { max-width:320px; margin:100px auto; text-align:center; }
+  .hidden { display:none; }
 </style>
 </head>
 <body>
-  <h1>🎮 Psych Engine Admin Panel</h1>
 
-  <section>
-    <h2>📢 Duyuru Gönder</h2>
-    <textarea id="announceInput" rows="3" placeholder="Tüm oyunculara gösterilecek mesaj..."></textarea>
-    <button onclick="sendAnnouncement()">Gönder</button>
-    <div id="status"></div>
-  </section>
+  <div id="loginBox">
+    <h1>🔒 Admin Giriş</h1>
+    <input type="password" id="passInput" placeholder="Şifre">
+    <button onclick="tryLogin()">Giriş Yap</button>
+    <div id="loginStatus" style="color:#f88;margin-top:8px;"></div>
+  </div>
 
-  <section>
-    <h2>🏆 Liderlik Tablosu</h2>
-    <table id="leaderboardTable">
-      <thead><tr><th>#</th><th>Oyuncu</th><th>Puan</th><th>Son Oynama</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </section>
+  <div id="panelContent" class="hidden">
+    <h1>🎮 Psych Engine Admin Panel</h1>
+
+    <section>
+      <h2>📢 Duyuru Gönder</h2>
+      <textarea id="announceInput" rows="3" placeholder="Tüm oyunculara gösterilecek mesaj..."></textarea>
+      <button onclick="sendAnnouncement()">Gönder</button>
+      <div id="status"></div>
+    </section>
+
+    <section>
+      <h2>🏆 Puan Ver</h2>
+      <input type="text" id="targetInput" placeholder="Kullanıcı adı (boşluksuz) veya 'All' yaz">
+      <input type="number" id="pointsInput" placeholder="Puan miktarı (örn. 50)">
+      <button onclick="givePoints()">Puanı Gönder</button>
+      <div id="pointStatus"></div>
+    </section>
+
+    <section>
+      <h2>🏆 Liderlik Tablosu</h2>
+      <table id="leaderboardTable">
+        <thead><tr><th>#</th><th>Oyuncu</th><th>Puan</th><th>Son Oynama</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
 
 <script>
 const API = window.location.origin;
+let ADMIN_PASS = "";
+
+async function tryLogin() {
+  const pass = document.getElementById("passInput").value;
+  const res = await fetch(API + "/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: pass })
+  });
+  if (res.ok) {
+    ADMIN_PASS = pass;
+    document.getElementById("loginBox").classList.add("hidden");
+    document.getElementById("panelContent").classList.remove("hidden");
+    loadLeaderboard();
+  } else {
+    document.getElementById("loginStatus").innerText = "❌ Şifre yanlış";
+  }
+}
 
 async function sendAnnouncement() {
   const message = document.getElementById("announceInput").value;
   const res = await fetch(API + "/announcement", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message })
+    body: JSON.stringify({ message, password: ADMIN_PASS })
   });
   document.getElementById("status").innerText = res.ok ? "✅ Duyuru gönderildi." : "❌ Hata oluştu.";
+}
+
+async function givePoints() {
+  const target = document.getElementById("targetInput").value.trim();
+  const points = parseInt(document.getElementById("pointsInput").value, 10);
+  const statusEl = document.getElementById("pointStatus");
+
+  if (!target || isNaN(points)) {
+    statusEl.innerText = "❌ Kullanıcı adı ve puan gerekli.";
+    return;
+  }
+  if (target.toLowerCase() !== "all" && target.includes(" ")) {
+    statusEl.innerText = "❌ Kullanıcı adında boşluk olamaz.";
+    return;
+  }
+
+  const res = await fetch(API + "/admin/give-points", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ target: target.toLowerCase() === "all" ? "all" : target, points, password: ADMIN_PASS })
+  });
+
+  if (res.ok) {
+    statusEl.innerText = "✅ Puan gönderildi.";
+    loadLeaderboard();
+  } else {
+    statusEl.innerText = "❌ Hata oluştu.";
+  }
 }
 
 async function loadLeaderboard() {
@@ -65,9 +131,6 @@ async function deletePlayer(player) {
   await fetch(API + "/score/" + encodeURIComponent(player), { method: "DELETE" });
   loadLeaderboard();
 }
-
-loadLeaderboard();
-setInterval(loadLeaderboard, 10000);
 </script>
 </body>
 </html>
