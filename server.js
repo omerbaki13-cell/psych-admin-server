@@ -52,8 +52,10 @@ app.post("/announcement", (req, res) => {
   if (typeof message !== "string") {
     return res.status(400).json({ error: "message gerekli" });
   }
+  const spaceIndex = message.indexOf(" ");
+  const formatted = spaceIndex === -1 ? message : message.substring(0, spaceIndex) + ": " + message.substring(spaceIndex + 1);
   const data = loadData();
-  data.announcement = message;
+  data.announcement = formatted;
   data.announcementDate = new Date().toISOString();
   saveData(data);
   res.json({ ok: true });
