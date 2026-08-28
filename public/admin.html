@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Psych Engine Admin Panel</title>
+<style>
+  body { font-family: sans-serif; background:#1e1e2f; color:#eee; max-width:700px; margin:40px auto; padding:0 16px; }
+  h1 { color:#ff5fa2; }
+  section { background:#2a2a40; padding:16px; border-radius:10px; margin-bottom:24px; }
+  textarea, input { width:100%; box-sizing:border-box; padding:8px; border-radius:6px; border:none; margin-top:8px; font-size:14px; }
+  button { margin-top:10px; padding:8px 16px; border:none; border-radius:6px; background:#ff5fa2; color:#fff; font-weight:bold; cursor:pointer; }
+  button:hover { background:#ff3d91; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #444; }
+  .del { background:#c0392b; padding:4px 10px; font-size:12px; }
+  #status { margin-top:8px; font-size:13px; color:#8fd; }
+</style>
+</head>
+<body>
+  <h1>🎮 Psych Engine Admin Panel</h1>
+
+  <section>
+    <h2>📢 Duyuru Gönder</h2>
+    <textarea id="announceInput" rows="3" placeholder="Tüm oyunculara gösterilecek mesaj..."></textarea>
+    <button onclick="sendAnnouncement()">Gönder</button>
+    <div id="status"></div>
+  </section>
+
+  <section>
+    <h2>🏆 Liderlik Tablosu</h2>
+    <table id="leaderboardTable">
+      <thead><tr><th>#</th><th>Oyuncu</th><th>Puan</th><th>Son Oynama</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+<script>
+const API = window.location.origin;
+
+async function sendAnnouncement() {
+  const message = document.getElementById("announceInput").value;
+  const res = await fetch(API + "/announcement", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message })
+  });
+  document.getElementById("status").innerText = res.ok ? "✅ Duyuru gönderildi." : "❌ Hata oluştu.";
+}
+
+async function loadLeaderboard() {
+  const res = await fetch(API + "/leaderboard");
+  const data = await res.json();
+  const tbody = document.querySelector("#leaderboardTable tbody");
+  tbody.innerHTML = "";
+  data.forEach((row, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${i+1}</td><td>${row.player}</td><td>${row.points}</td>
+      <td>${new Date(row.lastPlayed).toLocaleString("tr-TR")}</td>
+      <td><button class="del" onclick="deletePlayer('${row.player}')">Sil</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+async function deletePlayer(player) {
+  await fetch(API + "/score/" + encodeURIComponent(player), { method: "DELETE" });
+  loadLeaderboard();
+}
+
+loadLeaderboard();
+setInterval(loadLeaderboard, 10000);
+</script>
+</body>
+</html>
