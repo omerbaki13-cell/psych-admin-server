@@ -8,6 +8,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+const ADMIN_PASSWORD = "121624";
 const DATA_FILE = path.join(__dirname, "data.json");
 
 function loadData() {
@@ -23,22 +24,33 @@ function saveData(data) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
 
-// --- Duyuru (Announcement) ---
+function checkPassword(req, res) {
+  if (req.body.password !== ADMIN_PASSWORD) {
+    res.status(401).json({ error: "Yanlış şifre" });
+    return false;
+  }
+  return true;
+}
 
-// Oyun bunu her açılışta / menüde periyodik çeker
-app.get("/announcement", (req, res) => {
-  const data = loadData();
-  res.json({
-    message: data.announcement || "",
-    date: data.announcementDate,
-  });
+// --- Admin giriş kontrolü ---
+app.post("/admin/login", (req, res) => {
+  if (req.body.password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ ok: false });
+  }
+  res.json({ ok: true });
 });
 
-// Admin panelden yeni duyuru gönderir
+// --- Duyuru ---
+app.get("/announcement", (req, res) => {
+  const data = loadData();
+  res.json({ message: data.announcement || "", date: data.announcementDate });
+});
+
 app.post("/announcement", (req, res) => {
+  if (!checkPassword(req, res)) return;
   const { message } = req.body;
   if (typeof message !== "string") {
-    return res.status(400).json({ error: "message gerekli (string)" });
+    return res.status(400).json({ error: "message gerekli" });
   }
   const data = loadData();
   data.announcement = message;
@@ -47,14 +59,11 @@ app.post("/announcement", (req, res) => {
   res.json({ ok: true });
 });
 
-// --- Liderlik Tablosu (Leaderboard) ---
-
-// Oyun maç bitince buraya skor gönderir
-// body: { player: "isim", points: 3 }  (points = 100'er nota bazlı puan)
+// --- Skor gönderme (oyundan) ---
 app.post("/score", (req, res) => {
   const { player, points } = req.body;
   if (typeof player !== "string" || typeof points !== "number") {
-    return res.status(400).json({ error: "player (string) ve points (number) gerekli" });
+    return res.status(400).json({ error: "player ve points gerekli" });
   }
   const data = loadData();
   const existing = data.scores.find((s) => s.player === player);
@@ -62,24 +71,48 @@ app.post("/score", (req, res) => {
     existing.points += points;
     existing.lastPlayed = new Date().toISOString();
   } else {
-    data.scores.push({
-      player,
-      points,
-      lastPlayed: new Date().toISOString(),
-    });
+    data.scores.push({ player, points, lastPlayed: new Date().toISOString() });
   }
   saveData(data);
   res.json({ ok: true, total: existing ? existing.points : points });
 });
 
-// Panel ve oyun sıralamayı okur
-app.get("/leaderboard", (req, res) => {
+// --- Admin panelden manuel puan verme ---
+app.post("/admin/give-points", (req, res) => {
+  if (!checkPassword(req, res)) return;
+  const { target, points } = req.body;
+  if (typeof points !== "number") {
+    return res.status(400).json({ error: "points gerekli" });
+  }
+
   const data = loadData();
-  const sorted = [...data.scores].sort((a, b) => b.points - a.points);
-  res.json(sorted);
+
+  if (target === "all" || target === "All") {
+    data.scores.forEach((s) => (s.points += points));
+  } else {
+    if (typeof target !== "string" || target.includes(" ") || target.length === 0) {
+      return res.status(400).json({ error: "Kullanıcı adı geçersiz (boşluk olamaz)" });
+    }
+    const existing = data.scores.find((s) => s.player === target);
+    if (existing) {
+      existing.points += points;
+      existing.lastPlayed = new Date().toISOString();
+    } else {
+      data.scores.push({ player: target, points, lastPlayed: new Date().toISOString() });
+    }
+  }
+
+  saveData(data);
+  res.json({ ok: true });
 });
 
-// Admin panelden bir oyuncuyu silmek için
+// --- Liderlik tablosu ---
+app.get("/leaderboard", (req, res) => {
+  const data = loadData();
+  res.json([...data.scores].sort((a, b) => b.points - a.points));
+});
+
+// --- Oyuncu silme ---
 app.delete("/score/:player", (req, res) => {
   const data = loadData();
   data.scores = data.scores.filter((s) => s.player !== req.params.player);
