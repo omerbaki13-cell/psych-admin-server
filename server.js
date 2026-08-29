@@ -13,11 +13,13 @@ const DATA_FILE = path.join(__dirname, "data.json");
 
 function loadData() {
   if (!fs.existsSync(DATA_FILE)) {
-    const initial = { announcement: "", announcementDate: null, scores: [] };
+    const initial = { announcement: "", announcementDate: null, scores: [], users: [] };
     fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2));
     return initial;
   }
-  return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+  const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+  if (!data.users) data.users = [];
+  return data;
 }
 
 function saveData(data) {
@@ -38,6 +40,36 @@ app.post("/admin/login", (req, res) => {
     return res.status(401).json({ ok: false });
   }
   res.json({ ok: true });
+});
+
+// --- Kullanıcı kaydı (oyundan) ---
+app.post("/register", (req, res) => {
+  const { username, password } = req.body;
+  if (typeof username !== "string" || typeof password !== "string" || username.includes(" ") || username.length === 0 || password.length === 0) {
+    return res.status(400).json({ error: "Kullanıcı adı/şifre geçersiz" });
+  }
+  const data = loadData();
+  const exists = data.users.find((u) => u.username.toLowerCase() === username.toLowerCase());
+  if (exists) {
+    return res.status(409).json({ error: "Bu kullanıcı adı zaten alınmış" });
+  }
+  data.users.push({ username, password });
+  saveData(data);
+  res.json({ ok: true });
+});
+
+// --- Kullanıcı girişi (oyundan) ---
+app.post("/login", (req, res) => {
+  const { username, password } = req.body;
+  if (typeof username !== "string" || typeof password !== "string") {
+    return res.status(400).json({ error: "Kullanıcı adı/şifre gerekli" });
+  }
+  const data = loadData();
+  const user = data.users.find((u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
+  if (!user) {
+    return res.status(401).json({ error: "Kullanıcı adı veya şifre yanlış" });
+  }
+  res.json({ ok: true, username: user.username });
 });
 
 // --- Duyuru ---
