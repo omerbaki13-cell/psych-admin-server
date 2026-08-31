@@ -1,7 +1,7 @@
 const express = require("express");
-const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 app.use(cors());
@@ -9,22 +9,11 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const ADMIN_PASSWORD = "121624";
-const DATA_FILE = path.join(__dirname, "data.json");
 
-function loadData() {
-  if (!fs.existsSync(DATA_FILE)) {
-    const initial = { announcement: "", announcementDate: null, scores: [], users: [] };
-    fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2));
-    return initial;
-  }
-  const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-  if (!data.users) data.users = [];
-  return data;
-}
-
-function saveData(data) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
 function checkPassword(req, res) {
   if (req.body.password !== ADMIN_PASSWORD) {
@@ -43,42 +32,57 @@ app.post("/admin/login", (req, res) => {
 });
 
 // --- Kullanıcı kaydı (oyundan) ---
-app.post("/register", (req, res) => {
+app.post("/register", async (req, res) => {
   const { username, password } = req.body;
   if (typeof username !== "string" || typeof password !== "string" || username.includes(" ") || username.length === 0 || password.length === 0) {
     return res.status(400).json({ error: "Kullanıcı adı/şifre geçersiz" });
   }
-  const data = loadData();
-  const exists = data.users.find((u) => u.username.toLowerCase() === username.toLowerCase());
-  if (exists) {
+  const { data: existing } = await supabase
+    .from("users")
+    .select("username")
+    .ilike("username", username)
+    .maybeSingle();
+
+  if (existing) {
     return res.status(409).json({ error: "Bu kullanıcı adı zaten alınmış" });
   }
-  data.users.push({ username, password });
-  saveData(data);
+
+  const { error } = await supabase.from("users").insert({ username, password });
+  if (error) {
+    return res.status(500).json({ error: "Sunucu hatası" });
+  }
   res.json({ ok: true });
 });
 
 // --- Kullanıcı girişi (oyundan) ---
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   if (typeof username !== "string" || typeof password !== "string") {
     return res.status(400).json({ error: "Kullanıcı adı/şifre gerekli" });
   }
-  const data = loadData();
-  const user = data.users.find((u) => u.username.toLowerCase() === username.toLowerCase() && u.password === password);
-  if (!user) {
+  const { data: user } = await supabase
+    .from("users")
+    .select("username, password")
+    .ilike("username", username)
+    .maybeSingle();
+
+  if (!user || user.password !== password) {
     return res.status(401).json({ error: "Kullanıcı adı veya şifre yanlış" });
   }
   res.json({ ok: true, username: user.username });
 });
 
 // --- Duyuru ---
-app.get("/announcement", (req, res) => {
-  const data = loadData();
-  res.json({ message: data.announcement || "", date: data.announcementDate });
+app.get("/announcement", async (req, res) => {
+  const { data } = await supabase
+    .from("announcement")
+    .select("message, announcement_date")
+    .eq("id", 1)
+    .maybeSingle();
+  res.json({ message: data?.message || "", date: data?.announcement_date || null });
 });
 
-app.post("/announcement", (req, res) => {
+app.post("/announcement", async (req, res) => {
   if (!checkPassword(req, res)) return;
   const { message } = req.body;
   if (typeof message !== "string") {
@@ -86,71 +90,98 @@ app.post("/announcement", (req, res) => {
   }
   const spaceIndex = message.indexOf(" ");
   const formatted = spaceIndex === -1 ? message : message.substring(0, spaceIndex) + ": " + message.substring(spaceIndex + 1);
-  const data = loadData();
-  data.announcement = formatted;
-  data.announcementDate = new Date().toISOString();
-  saveData(data);
+
+  const { error } = await supabase
+    .from("announcement")
+    .update({ message: formatted, announcement_date: new Date().toISOString() })
+    .eq("id", 1);
+
+  if (error) {
+    return res.status(500).json({ error: "Sunucu hatası" });
+  }
   res.json({ ok: true });
 });
 
 // --- Skor gönderme (oyundan) ---
-app.post("/score", (req, res) => {
+app.post("/score", async (req, res) => {
   const { player, points } = req.body;
   if (typeof player !== "string" || typeof points !== "number") {
     return res.status(400).json({ error: "player ve points gerekli" });
   }
-  const data = loadData();
-  const existing = data.scores.find((s) => s.player === player);
+
+  const { data: existing } = await supabase
+    .from("scores")
+    .select("player, points")
+    .eq("player", player)
+    .maybeSingle();
+
+  let total;
   if (existing) {
-    existing.points += points;
-    existing.lastPlayed = new Date().toISOString();
+    total = existing.points + points;
+    await supabase
+      .from("scores")
+      .update({ points: total, last_played: new Date().toISOString() })
+      .eq("player", player);
   } else {
-    data.scores.push({ player, points, lastPlayed: new Date().toISOString() });
+    total = points;
+    await supabase
+      .from("scores")
+      .insert({ player, points, last_played: new Date().toISOString() });
   }
-  saveData(data);
-  res.json({ ok: true, total: existing ? existing.points : points });
+
+  res.json({ ok: true, total });
 });
 
 // --- Admin panelden manuel puan verme ---
-app.post("/admin/give-points", (req, res) => {
+app.post("/admin/give-points", async (req, res) => {
   if (!checkPassword(req, res)) return;
   const { target, points } = req.body;
   if (typeof points !== "number") {
     return res.status(400).json({ error: "points gerekli" });
   }
 
-  const data = loadData();
-
   if (target === "all" || target === "All") {
-    data.scores.forEach((s) => (s.points += points));
+    const { data: allScores } = await supabase.from("scores").select("player, points");
+    for (const s of allScores || []) {
+      await supabase.from("scores").update({ points: s.points + points }).eq("player", s.player);
+    }
   } else {
     if (typeof target !== "string" || target.includes(" ") || target.length === 0) {
       return res.status(400).json({ error: "Kullanıcı adı geçersiz (boşluk olamaz)" });
     }
-    const existing = data.scores.find((s) => s.player === target);
+    const { data: existing } = await supabase
+      .from("scores")
+      .select("player, points")
+      .eq("player", target)
+      .maybeSingle();
+
     if (existing) {
-      existing.points += points;
-      existing.lastPlayed = new Date().toISOString();
+      await supabase
+        .from("scores")
+        .update({ points: existing.points + points, last_played: new Date().toISOString() })
+        .eq("player", target);
     } else {
-      data.scores.push({ player: target, points, lastPlayed: new Date().toISOString() });
+      await supabase
+        .from("scores")
+        .insert({ player: target, points, last_played: new Date().toISOString() });
     }
   }
 
-  saveData(data);
   res.json({ ok: true });
 });
 
 // --- Liderlik tablosu ---
-app.get("/leaderboard", (req, res) => {
-  const data = loadData();
-  res.json([...data.scores].sort((a, b) => b.points - a.points));
+app.get("/leaderboard", async (req, res) => {
+  const { data } = await supabase
+    .from("scores")
+    .select("player, points, last_played")
+    .order("points", { ascending: false });
+  res.json((data || []).map((s) => ({ player: s.player, points: s.points, lastPlayed: s.last_played })));
 });
 
 // --- Oyuncu silme ---
-app.delete("/score/:player", (req, res) => {
-  const data = loadData();
-  data.scores = data.scores.filter((s) => s.player !== req.params.player);
-  saveData(data);
+app.delete("/score/:player", async (req, res) => {
+  await supabase.from("scores").delete().eq("player", req.params.player);
   res.json({ ok: true });
 });
 
