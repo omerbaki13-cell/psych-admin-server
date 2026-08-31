@@ -1,3 +1,9 @@
+try {
+  require("dotenv").config();
+} catch (e) {
+  // dotenv yüklü değilse Render üzerindeki ortam değişkenleriyle devam eder
+}
+
 const express = require("express");
 const path = require("path");
 const cors = require("cors");
@@ -10,10 +16,10 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const ADMIN_PASSWORD = "121624";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 function checkPassword(req, res) {
   if (req.body.password !== ADMIN_PASSWORD) {
@@ -187,3 +193,4 @@ app.delete("/score/:player", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor`));
+
