@@ -75,14 +75,52 @@ async function tryLogin() {
   }
 }
 
+async function readError(res) {
+  // Sunucudan gelen gerçek hata mesajını çıkarmaya çalış
+  let detail = "";
+  try {
+    const text = await res.text();
+    try {
+      const j = JSON.parse(text);
+      detail = j.error || j.message || text;
+    } catch (_) {
+      detail = text;
+    }
+  } catch (_) {}
+  return `HTTP ${res.status}${detail ? " — " + detail : ""}`;
+}
+
 async function sendAnnouncement() {
+  const statusEl = document.getElementById("status");
   const message = document.getElementById("announceInput").value;
-  const res = await fetch(API + "/announcement", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, password: ADMIN_PASS })
-  });
-  document.getElementById("status").innerText = res.ok ? "✅ Duyuru gönderildi." : "❌ Hata oluştu.";
+
+  if (!message.trim()) {
+    statusEl.style.color = "#f88";
+    statusEl.innerText = "❌ Duyuru mesajı boş olamaz.";
+    return;
+  }
+
+  statusEl.style.color = "#8fd";
+  statusEl.innerText = "⏳ Gönderiliyor...";
+
+  try {
+    const res = await fetch(API + "/announcement", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, password: ADMIN_PASS })
+    });
+
+    if (res.ok) {
+      statusEl.style.color = "#8fd";
+      statusEl.innerText = "✅ Duyuru gönderildi.";
+    } else {
+      statusEl.style.color = "#f88";
+      statusEl.innerText = "❌ " + (await readError(res));
+    }
+  } catch (err) {
+    statusEl.style.color = "#f88";
+    statusEl.innerText = "❌ Ağ hatası: " + err.message;
+  }
 }
 
 async function givePoints() {
@@ -106,10 +144,12 @@ async function givePoints() {
   });
 
   if (res.ok) {
+    statusEl.style.color = "#8fd";
     statusEl.innerText = "✅ Puan gönderildi.";
     loadLeaderboard();
   } else {
-    statusEl.innerText = "❌ Hata oluştu.";
+    statusEl.style.color = "#f88";
+    statusEl.innerText = "❌ " + (await readError(res));
   }
 }
 
