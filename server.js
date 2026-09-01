@@ -20,7 +20,58 @@ if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error("HATA: SUPABASE_URL veya SUPABASE_SERVICE_KEY environment variable eksik!");
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// createClient eksik env ile throw eder ve sunucu hiç ayaga kalkmaz.
+// Bunun yerine null birakip her istekte anlasilir hata donduruyoruz.
+const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+function requireSupabase(res) {
+  if (!supabase) {
+    res.status(500).json({
+      error:
+        "Supabase baglantisi yok. Render > Environment kisminda SUPABASE_URL ve " +
+        "SUPABASE_SERVICE_ROLE_KEY degiskenlerini ekleyip servisi yeniden deploy et.",
+    });
+    return false;
+  }
+  return true;
+}
+
+// Supabase hatasini okunabilir metne cevir
+function supaError(error) {
+  const parts = [error.message];
+  if (error.details) parts.push("detay: " + error.details);
+  if (error.hint) parts.push("ipucu: " + error.hint);
+  if (error.code) parts.push("kod: " + error.code);
+  return parts.filter(Boolean).join(" | ");
+}
+
+// --- Teshis: /health ---
+app.get("/health", async (req, res) => {
+  const out = {
+    supabaseUrlVar: !!SUPABASE_URL,
+    supabaseKeyVar: !!SUPABASE_KEY,
+    keyType: process.env.SUPABASE_SERVICE_ROLE_KEY
+      ? "service_role (dogru)"
+      : process.env.SUPABASE_SERVICE_KEY
+      ? "SUPABASE_SERVICE_KEY"
+      : "yok",
+    tables: {},
+  };
+
+  if (!supabase) {
+    out.ok = false;
+    out.error = "Supabase client olusturulamadi (env eksik).";
+    return res.status(500).json(out);
+  }
+
+  for (const table of ["announcement", "scores", "users"]) {
+    const { error } = await supabase.from(table).select("*").limit(1);
+    out.tables[table] = error ? "HATA: " + supaError(error) : "OK";
+  }
+
+  out.ok = Object.values(out.tables).every((v) => v === "OK");
+  res.json(out);
+});
 
 function checkPassword(req, res) {
   if (req.body.password !== ADMIN_PASSWORD) {
@@ -40,6 +91,7 @@ app.post("/admin/login", (req, res) => {
 
 // --- Kullanıcı kaydı (oyundan) ---
 app.post("/register", async (req, res) => {
+  if (!requireSupabase(res)) return;
   const { username, password } = req.body;
   if (
     typeof username !== "string" ||
@@ -74,6 +126,7 @@ app.post("/register", async (req, res) => {
 
 // --- Kullanıcı girişi (oyundan) ---
 app.post("/login", async (req, res) => {
+  if (!requireSupabase(res)) return;
   const { username, password } = req.body;
   if (typeof username !== "string" || typeof password !== "string") {
     return res.status(400).json({ error: "Kullanıcı adı/şifre gerekli" });
@@ -97,6 +150,7 @@ app.post("/login", async (req, res) => {
 
 // --- Duyuru ---
 app.get("/announcement", async (req, res) => {
+  if (!requireSupabase(res)) return;
   const { data, error } = await supabase
     .from("announcement")
     .select("*")
@@ -105,7 +159,8 @@ app.get("/announcement", async (req, res) => {
     .maybeSingle();
 
   if (error) {
-    return res.status(500).json({ error: "Sunucu hatası: " + error.message });
+    console.error("Duyuru okuma hatasi:", error);
+    return res.status(500).json({ error: "Supabase: " + supaError(error) });
   }
 
   res.json({
@@ -116,8 +171,9 @@ app.get("/announcement", async (req, res) => {
 
 app.post("/announcement", async (req, res) => {
   if (!checkPassword(req, res)) return;
+  if (!requireSupabase(res)) return;
   const { message } = req.body;
-  if (typeof message !== "string") {
+  if (typeof message !== "string" || message.trim() === "") {
     return res.status(400).json({ error: "message gerekli" });
   }
 
@@ -130,7 +186,8 @@ app.post("/announcement", async (req, res) => {
     .insert([{ message: formatted, announcement_date: new Date().toISOString() }]);
 
   if (error) {
-    return res.status(500).json({ error: "Sunucu hatası: " + error.message });
+    console.error("Duyuru insert hatasi:", error);
+    return res.status(500).json({ error: "Supabase: " + supaError(error) });
   }
 
   res.json({ ok: true });
@@ -138,6 +195,7 @@ app.post("/announcement", async (req, res) => {
 
 // --- Skor gönderme (oyundan) ---
 app.post("/score", async (req, res) => {
+  if (!requireSupabase(res)) return;
   const { player, points } = req.body;
   if (typeof player !== "string" || typeof points !== "number") {
     return res.status(400).json({ error: "player ve points gerekli" });
@@ -177,6 +235,7 @@ app.post("/score", async (req, res) => {
 // --- Admin panelden manuel puan verme ---
 app.post("/admin/give-points", async (req, res) => {
   if (!checkPassword(req, res)) return;
+  if (!requireSupabase(res)) return;
   const { target, points } = req.body;
   if (typeof points !== "number") {
     return res.status(400).json({ error: "points gerekli" });
@@ -224,6 +283,7 @@ app.post("/admin/give-points", async (req, res) => {
 
 // --- Liderlik tablosu ---
 app.get("/leaderboard", async (req, res) => {
+  if (!requireSupabase(res)) return;
   const { data, error } = await supabase.from("scores").select("*").order("points", { ascending: false });
   if (error) {
     return res.status(500).json({ error: "Sunucu hatası: " + error.message });
@@ -239,6 +299,7 @@ app.get("/leaderboard", async (req, res) => {
 
 // --- Oyuncu silme ---
 app.delete("/score/:player", async (req, res) => {
+  if (!requireSupabase(res)) return;
   const { error } = await supabase.from("scores").delete().eq("player", req.params.player);
   if (error) {
     return res.status(500).json({ error: "Sunucu hatası: " + error.message });
