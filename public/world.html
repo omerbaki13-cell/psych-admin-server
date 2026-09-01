@@ -2,254 +2,468 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Konser Alanı</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Konser Alanı 3D</title>
 <style>
-  html, body { margin:0; padding:0; overflow:hidden; background:#000; font-family:sans-serif; }
-  #loginBox { max-width:320px; margin:100px auto; text-align:center; color:#eee; background:#1e1e2f; padding:24px; border-radius:12px; }
-  #loginBox h1 { color:#ff5fa2; font-size:22px; }
-  #loginBox input { width:100%; box-sizing:border-box; padding:10px; margin-top:10px; border-radius:6px; border:none; font-size:14px; }
-  #loginBox button { width:100%; margin-top:14px; padding:10px; border:none; border-radius:6px; background:#ff5fa2; color:#fff; font-weight:bold; cursor:pointer; font-size:15px; }
-  #loginBox button:hover { background:#ff3d91; }
-  #loginStatus { margin-top:10px; font-size:13px; color:#f88; min-height:16px; }
-  #hint { position:fixed; bottom:16px; left:16px; color:#fff; font-size:13px; background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:8px; display:none; }
-  #crosshair { position:fixed; top:50%; left:50%; width:6px; height:6px; background:#fff; border-radius:50%; transform:translate(-50%,-50%); display:none; }
-  canvas { display:block; }
+  html, body { margin:0; padding:0; overflow:hidden; background:#000; font-family:sans-serif; height:100%; width:100%; user-select:none; -webkit-user-select:none; }
+  #hint { position:fixed; bottom:16px; left:16px; color:#fff; font-size:12px; background:rgba(0,0,0,0.7); padding:8px 12px; border-radius:8px; z-index:10; pointer-events:none; }
+  #actionPrompt { position:fixed; top:20%; left:50%; transform:translate(-50%, -50%); color:#fff; font-size:16px; font-weight:bold; background:rgba(0,0,0,0.85); padding:12px 24px; border-radius:30px; border:2px solid #ff2f82; display:none; z-index:20; text-align:center; cursor:pointer; }
+  canvas { display:block; width:100vw; height:100vh; position:absolute; top:0; left:0; z-index:1; }
+  
+  #timeBar { position:fixed; top:15px; left:50%; transform:translateX(-50%); display:flex; gap:8px; z-index:30; background:rgba(0,0,0,0.6); padding:6px 12px; border-radius:25px; border:1px solid rgba(255,255,255,0.2); }
+  .time-btn { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.3); color:#fff; font-size:12px; font-weight:bold; padding:8px 12px; border-radius:18px; cursor:pointer; touch-action:manipulation; transition:0.2s; }
+  .time-btn:active, .time-btn.active { background:#ff2f82; border-color:#fff; transform:scale(1.05); }
+
+  #leftMoveZone { position:fixed; top:0; left:0; width:45%; height:100%; z-index:15; touch-action:none; display:none; }
+  #rightLookZone { position:fixed; top:0; right:0; width:55%; height:100%; z-index:5; touch-action:none; display:none; }
+  
+  #joystick { position:fixed; bottom:30px; left:30px; width:110px; height:110px; border-radius:50%; background:rgba(255,255,255,0.2); pointer-events:none; z-index:10; display:none; }
+  #joystickKnob { position:absolute; top:35px; left:35px; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.6); }
+
+  .mobile-btn { position:fixed; width:65px; height:65px; border-radius:50%; background:rgba(0,0,0,0.65); border:2px solid rgba(255,255,255,0.4); color:#fff; font-size:13px; font-weight:bold; display:none; align-items:center; justify-content:center; text-align:center; z-index:20; touch-action:manipulation; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.5); }
+  .mobile-btn:active { background:rgba(255,47,130,0.8); border-color:#fff; transform:scale(0.95); }
+  
+  #jumpBtn { right:30px; bottom:30px; width:75px; height:75px; font-size:14px; background:rgba(255,47,130,0.4); border-color:#ff2f82; }
+  #turnBackBtn { right:30px; bottom:120px; font-size:11px; }
+
+  #rotateMsg { position:fixed; inset:0; background:#000; color:#fff; display:none; align-items:center; justify-content:center; text-align:center; font-size:18px; z-index:100; padding:20px; box-sizing:border-box; }
+  @media (orientation: portrait) {
+    #rotateMsg { display:flex; }
+  }
 </style>
 </head>
 <body>
 
-<div id="loginBox">
-  <h1>🎤 Konser Alanına Giriş</h1>
-  <input type="text" id="userInput" placeholder="Kullanıcı adı">
-  <input type="password" id="passInput" placeholder="Şifre">
-  <button onclick="doLogin()">Giriş Yap</button>
-  <div id="loginStatus"></div>
+<div id="rotateMsg">📱↻ Daha iyi bir deneyim için telefonu yatay çevir</div>
+<div id="hint">Masaüstü: WASD yürü, Space Zıpla, [E] Otur | Mobil: Sol Yürü, Sağ Bakış</div>
+<div id="actionPrompt">Oturmak için [E] tuşuna bas / Dokun</div>
+
+<div id="timeBar">
+  <button class="time-btn active" id="btn-sunrise">🌄 Gün Doğuşu</button>
+  <button class="time-btn" id="btn-noon">☀️ Öğlen</button>
+  <button class="time-btn" id="btn-sunset">🌅 Akşam</button>
+  <button class="time-btn" id="btn-night">🌙 Gece</button>
 </div>
 
-<div id="hint">Sol: joystick ile yürü | Sağ: parmakla ekrana sürükleyip bak</div>
-<div id="crosshair"></div>
+<div id="leftMoveZone"></div>
+<div id="rightLookZone"></div>
 
-<div id="joystick" style="position:fixed; bottom:30px; left:30px; width:110px; height:110px; border-radius:50%; background:rgba(255,255,255,0.15); display:none; touch-action:none;">
-  <div id="joystickKnob" style="position:absolute; top:35px; left:35px; width:40px; height:40px; border-radius:50%; background:rgba(255,255,255,0.5);"></div>
+<div id="joystick">
+  <div id="joystickKnob"></div>
 </div>
-<div id="lookZone" style="position:fixed; top:0; right:0; width:50%; height:100%; display:none; touch-action:none;"></div>
+
+<button id="jumpBtn" class="mobile-btn">ZIPLA<br>🦘</button>
+<button id="turnBackBtn" class="mobile-btn">ARKANI<br>DÖN 🔄</button>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const API = window.location.origin;
-
-async function doLogin() {
-  const username = document.getElementById("userInput").value.trim();
-  const password = document.getElementById("passInput").value;
-  const statusEl = document.getElementById("loginStatus");
-  if (!username || !password) {
-    statusEl.innerText = "Kullanıcı adı ve şifre gir!";
-    return;
-  }
-  statusEl.style.color = "#8fd";
-  statusEl.innerText = "Bağlanılıyor...";
-  try {
-    const res = await fetch(API + "/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password })
-    });
-    if (res.ok) {
-      document.getElementById("loginBox").style.display = "none";
-      document.getElementById("hint").style.display = "block";
-      if (!isTouchDevice()) { document.getElementById("crosshair").style.display = "block"; }
 function isTouchDevice(){ return ('ontouchstart' in window) || navigator.maxTouchPoints > 0; }
-      startWorld(username);
-    } else {
-      statusEl.style.color = "#f88";
-      statusEl.innerText = "Kullanıcı adı veya şifre yanlış!";
-    }
-  } catch (e) {
-    statusEl.style.color = "#f88";
-    statusEl.innerText = "Sunucuya bağlanılamadı, tekrar dene.";
+
+function tryLockLandscape() {
+  const el = document.documentElement;
+  if (el.requestFullscreen) { el.requestFullscreen().catch(() => {}); }
+  else if (el.webkitRequestFullscreen) { el.webkitRequestFullscreen(); }
+  if (screen.orientation && screen.orientation.lock) {
+    screen.orientation.lock("landscape").catch(() => {});
   }
 }
+document.addEventListener("touchstart", tryLockLandscape, { once: true, passive: true });
+document.addEventListener("click", tryLockLandscape, { once: true });
 
-function startWorld(username) {
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0a15);
-  scene.fog = new THREE.Fog(0x0a0a15, 10, 80);
-
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 1.7, 25);
-
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  document.body.appendChild(renderer.domElement);
-
-  // Zemin (konser alanı)
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(100, 100),
-    new THREE.MeshStandardMaterial({ color: 0x1a1a2a })
-  );
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  scene.add(floor);
-
-  // Sahne (stage)
-  const stage = new THREE.Mesh(
-    new THREE.BoxGeometry(20, 1.5, 10),
-    new THREE.MeshStandardMaterial({ color: 0x333344 })
-  );
-  stage.position.set(0, 0.75, -20);
-  stage.castShadow = true;
-  scene.add(stage);
-
-  // Sahne arkası ekran
-  const screenMesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(18, 8),
-    new THREE.MeshStandardMaterial({ color: 0xff5fa2, emissive: 0xff2f82, emissiveIntensity: 0.6 })
-  );
-  screenMesh.position.set(0, 6, -24.9);
-  scene.add(screenMesh);
-
-  // Sahne ışıkları (renkli spot ışıklar)
-  const lightColors = [0xff2f82, 0x2fd0ff, 0xfff02f, 0x7dff2f];
-  for (let i = 0; i < 4; i++) {
-    const light = new THREE.PointLight(lightColors[i], 2, 30);
-    light.position.set(-9 + i * 6, 8, -18);
-    light.castShadow = true;
-    scene.add(light);
-
-    const bulb = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 8, 8),
-      new THREE.MeshBasicMaterial({ color: lightColors[i] })
-    );
-    bulb.position.copy(light.position);
-    scene.add(bulb);
+function startWorld() {
+  if (typeof THREE === 'undefined') {
+    alert("Three.js yüklenemedi. İnternet bağlantınızı kontrol edip sayfayı yenileyin.");
+    return;
   }
 
-  const ambient = new THREE.AmbientLight(0x404060, 1.2);
-  scene.add(ambient);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xd47a45);
+  scene.fog = new THREE.FogExp2(0xd47a45, 0.01);
 
-  // Kalabalık (basit kutular/silindirler, ızgara şeklinde)
-  const crowdMat = new THREE.MeshStandardMaterial({ color: 0x555577 });
-  for (let x = -18; x <= 18; x += 3) {
-    for (let z = -6; z <= 18; z += 3) {
-      if (Math.abs(x) < 2 && z < -4) continue;
-      const person = new THREE.Mesh(new THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.3, 1, 4, 8) : new THREE.CylinderGeometry(0.3, 0.3, 1.6, 8), crowdMat);
-      person.position.set(x + (Math.random() - 0.5), 0.9, z + (Math.random() - 0.5));
-      person.castShadow = true;
-      scene.add(person);
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  const defaultEyeHeight = 1.7;
+  camera.position.set(0, defaultEyeHeight, 28);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  document.body.appendChild(renderer.domElement);
+
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(120, 120),
+    new THREE.MeshStandardMaterial({ color: 0x111116, roughness: 0.9 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  scene.add(floor);
+
+  const stageHeight = 1.5;
+  const stageBounds = { minX: -12, maxX: 12, minZ: -26, maxZ: -14 };
+  const stage = new THREE.Mesh(
+    new THREE.BoxGeometry(24, stageHeight, 12),
+    new THREE.MeshStandardMaterial({ color: 0x1a1a24, roughness: 0.5 })
+  );
+  stage.position.set(0, stageHeight / 2, -20);
+  scene.add(stage);
+
+  const screenMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(20, 9),
+    new THREE.MeshStandardMaterial({ color: 0xff3385, emissive: 0xff1066, emissiveIntensity: 0.8 })
+  );
+  screenMesh.position.set(0, 6.5, -25.9);
+  scene.add(screenMesh);
+
+  function createSpeakerTower(xPos) {
+    const group = new THREE.Group();
+    const boxMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0d, roughness: 0.3 });
+    const coneMat = new THREE.MeshStandardMaterial({ color: 0x22222a, roughness: 0.2, metalness: 0.8 });
+    
+    const towerBody = new THREE.Mesh(new THREE.BoxGeometry(2.5, 7, 2), boxMat);
+    towerBody.position.set(0, 5, 0);
+    group.add(towerBody);
+
+    for (let y = 2.2; y <= 7.8; y += 1.8) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.6, 0.3, 16), coneMat);
+      cone.rotation.x = -Math.PI / 2;
+      cone.position.set(0, y, 1.05);
+      group.add(cone);
+    }
+
+    group.position.set(xPos, 0, -18);
+    scene.add(group);
+  }
+  createSpeakerTower(-10.5);
+  createSpeakerTower(10.5);
+
+  const sunMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(3.5, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffdd66 })
+  );
+  sunMesh.position.set(0, 10, -60);
+  scene.add(sunMesh);
+
+  const moonGroup = new THREE.Group();
+  const mainMoon = new THREE.Mesh(
+    new THREE.SphereGeometry(3, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xeeeeff })
+  );
+  const moonCutter = new THREE.Mesh(
+    new THREE.SphereGeometry(2.7, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0x0a0a1a })
+  );
+  moonCutter.position.set(1.2, 0.5, 0.5);
+  moonGroup.add(mainMoon);
+  moonGroup.add(moonCutter);
+  moonGroup.position.set(0, 18, -60);
+  moonGroup.visible = false;
+  scene.add(moonGroup);
+
+  const ambientLight = new THREE.AmbientLight(0xffaa77, 2.2);
+  scene.add(ambientLight);
+
+  function applyTimeOfDay(type) {
+    if (type === 'sunrise') {
+      scene.background.setHex(0xd47a45);
+      scene.fog.color.setHex(0xd47a45);
+      ambientLight.color.setHex(0xffaa77);
+      ambientLight.intensity = 2.2;
+      sunMesh.visible = true;
+      sunMesh.position.set(0, 10, -60);
+      sunMesh.material.color.setHex(0xffaa44);
+      moonGroup.visible = false;
+    } 
+    else if (type === 'noon') {
+      scene.background.setHex(0x55aaff);
+      scene.fog.color.setHex(0x55aaff);
+      ambientLight.color.setHex(0xffffff);
+      ambientLight.intensity = 3.5;
+      sunMesh.visible = false;
+      moonGroup.visible = false;
+    } 
+    else if (type === 'sunset') {
+      scene.background.setHex(0x5a2040);
+      scene.fog.color.setHex(0x5a2040);
+      ambientLight.color.setHex(0xff5566);
+      ambientLight.intensity = 1.8;
+      sunMesh.visible = true;
+      sunMesh.position.set(0, 8, -60);
+      sunMesh.material.color.setHex(0xff3300);
+      moonGroup.visible = false;
+    } 
+    else if (type === 'night') {
+      scene.background.setHex(0x0a0a1a);
+      scene.fog.color.setHex(0x0a0a1a);
+      ambientLight.color.setHex(0x555588);
+      ambientLight.intensity = 1.2;
+      sunMesh.visible = false;
+      moonGroup.visible = true;
+      moonCutter.material.color.setHex(0x0a0a1a);
     }
   }
 
-  // Hareket kontrolü
+  const timeBtns = {
+    'btn-sunrise': 'sunrise',
+    'btn-noon': 'noon',
+    'btn-sunset': 'sunset',
+    'btn-night': 'night'
+  };
+
+  Object.keys(timeBtns).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+        el.classList.add('active');
+        applyTimeOfDay(timeBtns[id]);
+      });
+    }
+  });
+
+  const seatPositions = [];
+
+  function createSingleChairMesh() {
+    const chairGroup = new THREE.Group();
+    const leatherMat = new THREE.MeshStandardMaterial({ color: 0x18181c, roughness: 0.5 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0d, roughness: 0.8 });
+
+    const seatBase = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.18, 0.9), leatherMat);
+    seatBase.position.set(0, 0.5, 0);
+    chairGroup.add(seatBase);
+
+    const seatBack = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.9, 0.18), leatherMat);
+    seatBack.position.set(0, 0.9, 0.38);
+    chairGroup.add(seatBack);
+
+    const armLeft = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.35, 0.8), frameMat);
+    armLeft.position.set(-0.52, 0.65, 0);
+    chairGroup.add(armLeft);
+
+    const armRight = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.35, 0.8), frameMat);
+    armRight.position.set(0.52, 0.65, 0);
+    chairGroup.add(armRight);
+
+    return chairGroup;
+  }
+
+  const baseChair = createSingleChairMesh();
+
+  for (let x = -17; x <= 17; x += 2.1) {
+    for (let z = -6; z <= 22; z += 2.4) {
+      if (Math.abs(x) < 2.8) continue;
+      const chair = baseChair.clone();
+      chair.position.set(x, 0, z);
+      scene.add(chair);
+      seatPositions.push({ x: x, y: 0.5, z: z });
+    }
+  }
+
   let yaw = 0, pitch = 0;
   let moveF = false, moveB = false, moveL = false, moveR = false;
   let locked = false;
+  let isSeated = false;
+  let nearestSeat = null;
 
-  renderer.domElement.addEventListener("click", () => {
-    renderer.domElement.requestPointerLock();
-  });
+  let velocityY = 0;
+  const gravity = -0.012;
+  const jumpStrength = 0.22;
+  let isGrounded = true;
+  let currentBaseY = defaultEyeHeight;
 
-  document.addEventListener("pointerlockchange", () => {
-    locked = document.pointerLockElement === renderer.domElement;
-  });
+  const actionPrompt = document.getElementById("actionPrompt");
 
-  document.addEventListener("mousemove", (e) => {
-    if (!locked) return;
-    yaw -= e.movementX * 0.002;
-    pitch -= e.movementY * 0.002;
-    pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
-  });
+  function triggerJump() {
+    if (isGrounded && !isSeated) {
+      velocityY = jumpStrength;
+      isGrounded = false;
+    }
+  }
 
-  document.addEventListener("keydown", (e) => {
-    if (e.code === "KeyW") moveF = true;
-    if (e.code === "KeyS") moveB = true;
-    if (e.code === "KeyA") moveL = true;
-    if (e.code === "KeyD") moveR = true;
-  });
-  document.addEventListener("keyup", (e) => {
-    if (e.code === "KeyW") moveF = false;
-    if (e.code === "KeyS") moveB = false;
-    if (e.code === "KeyA") moveL = false;
-    if (e.code === "KeyD") moveR = false;
-  });
+  function turnBack() { yaw += Math.PI; }
+
+  const isTouch = isTouchDevice();
+
+  if (!isTouch) {
+    renderer.domElement.addEventListener("click", () => {
+      if (!isSeated) renderer.domElement.requestPointerLock();
+    });
+    document.addEventListener("pointerlockchange", () => {
+      locked = document.pointerLockElement === renderer.domElement;
+    });
+    document.addEventListener("mousemove", (e) => {
+      if (!locked && !isSeated) return;
+      yaw -= e.movementX * 0.0025;
+      pitch -= e.movementY * 0.0025;
+      pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.code === "KeyW") moveF = true;
+      if (e.code === "KeyS") moveB = true;
+      if (e.code === "KeyA") moveL = true;
+      if (e.code === "KeyD") moveR = true;
+      if (e.code === "Space") {
+        if (isSeated) standUp();
+        else triggerJump();
+      }
+      if (e.code === "KeyE") toggleSeat();
+    });
+    document.addEventListener("keyup", (e) => {
+      if (e.code === "KeyW") moveF = false;
+      if (e.code === "KeyS") moveB = false;
+      if (e.code === "KeyA") moveL = false;
+      if (e.code === "KeyD") moveR = false;
+    });
+  }
+
+  function toggleSeat() {
+    if (isSeated) {
+      standUp();
+    } else if (nearestSeat) {
+      isSeated = true;
+      yaw = 0;
+      pitch = 0;
+      camera.position.set(nearestSeat.x, nearestSeat.y + 0.7, nearestSeat.z);
+      actionPrompt.innerText = "Kalkmak için [E] veya Dokun";
+    }
+  }
+
+  function standUp() {
+    if (!isSeated) return;
+    isSeated = false;
+    camera.position.y = currentBaseY;
+    camera.position.z += 0.8;
+    actionPrompt.style.display = "none";
+  }
+
+  let joyDX = 0, joyDY = 0;
+
+  if (isTouch) {
+    const leftMoveZone = document.getElementById("leftMoveZone");
+    const rightLookZone = document.getElementById("rightLookZone");
+    const joystick = document.getElementById("joystick");
+    const joystickKnob = document.getElementById("joystickKnob");
+    const jumpBtn = document.getElementById("jumpBtn");
+    const turnBackBtn = document.getElementById("turnBackBtn");
+
+    leftMoveZone.style.display = "block";
+    rightLookZone.style.display = "block";
+    joystick.style.display = "block";
+    jumpBtn.style.display = "flex";
+    turnBackBtn.style.display = "flex";
+
+    jumpBtn.addEventListener("touchstart", (e) => { e.stopPropagation(); triggerJump(); }, { passive: true });
+    turnBackBtn.addEventListener("touchstart", (e) => { e.stopPropagation(); turnBack(); }, { passive: true });
+
+    let joyActive = false, joyTouchId = null, joyStartX = 0, joyStartY = 0;
+
+    leftMoveZone.addEventListener("touchstart", (e) => {
+      if (joyActive) return;
+      const t = e.changedTouches[0];
+      joyTouchId = t.identifier;
+      joyActive = true;
+      joyStartX = t.clientX;
+      joyStartY = t.clientY;
+
+      joystick.style.left = (joyStartX - 55) + "px";
+      joystick.style.top = (joyStartY - 55) + "px";
+      joystickKnob.style.left = "35px";
+      joystickKnob.style.top = "35px";
+    }, { passive: true });
+
+    leftMoveZone.addEventListener("touchmove", (e) => {
+      if (!joyActive) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === joyTouchId) {
+          const dx = t.clientX - joyStartX;
+          const dy = t.clientY - joyStartY;
+          const maxDist = 40;
+          const dist = Math.min(maxDist, Math.hypot(dx, dy));
+          const angle = Math.atan2(dy, dx);
+          const kx = Math.cos(angle) * dist;
+          const ky = Math.sin(angle) * dist;
+
+          joystickKnob.style.left = (35 + kx) + "px";
+          joystickKnob.style.top = (35 + ky) + "px";
+
+          joyDX = kx / maxDist;
+          joyDY = ky / maxDist;
+          break;
+        }
+      }
+    }, { passive: true });
+
+    function resetJoystick(e) {
+      if (!joyActive) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joyTouchId) {
+          joyActive = false;
+          joyTouchId = null;
+          joyDX = 0;
+          joyDY = 0;
+          joystick.style.left = "30px";
+          joystick.style.top = "";
+          joystick.style.bottom = "30px";
+          joystickKnob.style.left = "35px";
+          joystickKnob.style.top = "35px";
+          break;
+        }
+      }
+    }
+
+    leftMoveZone.addEventListener("touchend", resetJoystick, { passive: true });
+    leftMoveZone.addEventListener("touchcancel", resetJoystick, { passive: true });
+
+    let lookActive = false, lookTouchId = null, lookLastX = 0, lookLastY = 0;
+
+    rightLookZone.addEventListener("touchstart", (e) => {
+      if (lookActive) return;
+      const t = e.changedTouches[0];
+      lookTouchId = t.identifier;
+      lookActive = true;
+      lookLastX = t.clientX;
+      lookLastY = t.clientY;
+    }, { passive: true });
+
+    rightLookZone.addEventListener("touchmove", (e) => {
+      if (!lookActive) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier === lookTouchId) {
+          const dx = t.clientX - lookLastX;
+          const dy = t.clientY - lookLastY;
+          lookLastX = t.clientX;
+          lookLastY = t.clientY;
+
+          yaw -= dx * 0.005;
+          pitch -= dy * 0.005;
+          pitch = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, pitch));
+          break;
+        }
+      }
+    }, { passive: true });
+
+    function stopLook(e) {
+      if (!lookActive) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === lookTouchId) {
+          lookActive = false;
+          lookTouchId = null;
+          break;
+        }
+      }
+    }
+
+    rightLookZone.addEventListener("touchend", stopLook, { passive: true });
+    rightLookZone.addEventListener("touchcancel", stopLook, { passive: true });
+
+    actionPrompt.addEventListener("click", toggleSeat);
+  }
 
   window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
-
-
-  // --- Dokunmatik kontroller (mobil) ---
-  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-  const joystick = document.getElementById("joystick");
-  const joystickKnob = document.getElementById("joystickKnob");
-  const lookZone = document.getElementById("lookZone");
-
-  let joyActive = false, joyStartX = 0, joyStartY = 0, joyDX = 0, joyDY = 0;
-  let lookActive = false, lookLastX = 0, lookLastY = 0;
-
-  if (isTouch) {
-    joystick.style.display = "block";
-    lookZone.style.display = "block";
-    document.getElementById("hint").style.display = "block";
-
-    joystick.addEventListener("touchstart", (e) => {
-      joyActive = true;
-      const t = e.touches[0];
-      joyStartX = t.clientX;
-      joyStartY = t.clientY;
-    }, { passive: true });
-
-    joystick.addEventListener("touchmove", (e) => {
-      if (!joyActive) return;
-      const t = e.touches[0];
-      joyDX = t.clientX - joyStartX;
-      joyDY = t.clientY - joyStartY;
-      const maxDist = 40;
-      const dist = Math.min(maxDist, Math.hypot(joyDX, joyDY));
-      const angle = Math.atan2(joyDY, joyDX);
-      const kx = Math.cos(angle) * dist;
-      const ky = Math.sin(angle) * dist;
-      joystickKnob.style.left = (35 + kx) + "px";
-      joystickKnob.style.top = (35 + ky) + "px";
-      joyDX = kx / maxDist;
-      joyDY = ky / maxDist;
-    }, { passive: true });
-
-    function resetJoystick() {
-      joyActive = false;
-      joyDX = 0;
-      joyDY = 0;
-      joystickKnob.style.left = "35px";
-      joystickKnob.style.top = "35px";
-    }
-    joystick.addEventListener("touchend", resetJoystick, { passive: true });
-    joystick.addEventListener("touchcancel", resetJoystick, { passive: true });
-
-    lookZone.addEventListener("touchstart", (e) => {
-      lookActive = true;
-      const t = e.touches[0];
-      lookLastX = t.clientX;
-      lookLastY = t.clientY;
-    }, { passive: true });
-
-    lookZone.addEventListener("touchmove", (e) => {
-      if (!lookActive) return;
-      const t = e.touches[0];
-      const dx = t.clientX - lookLastX;
-      const dy = t.clientY - lookLastY;
-      lookLastX = t.clientX;
-      lookLastY = t.clientY;
-      yaw -= dx * 0.004;
-      pitch -= dy * 0.004;
-      pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
-    }, { passive: true });
-
-    lookZone.addEventListener("touchend", () => { lookActive = false; }, { passive: true });
-    lookZone.addEventListener("touchcancel", () => { lookActive = false; }, { passive: true });
-  }
 
   function animate() {
     requestAnimationFrame(animate);
@@ -258,34 +472,77 @@ function startWorld(username) {
     camera.rotation.y = yaw;
     camera.rotation.x = pitch;
 
-    const speed = 0.15;
-    const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
-    const right = new THREE.Vector3(Math.sin(yaw + Math.PI / 2), 0, Math.cos(yaw + Math.PI / 2));
+    if (!isSeated) {
+      const onStage = (
+        camera.position.x >= stageBounds.minX && camera.position.x <= stageBounds.maxX &&
+        camera.position.z >= stageBounds.minZ && camera.position.z <= stageBounds.maxZ
+      );
 
-    if (moveF) camera.position.addScaledVector(forward, -speed);
-    if (moveB) camera.position.addScaledVector(forward, speed);
-    if (moveL) camera.position.addScaledVector(right, -speed);
-    if (moveR) camera.position.addScaledVector(right, speed);
+      currentBaseY = onStage ? (stageHeight + defaultEyeHeight) : defaultEyeHeight;
 
-    if (isTouch && (joyDX !== 0 || joyDY !== 0)) {
-      camera.position.addScaledVector(forward, joyDY * speed);
-      camera.position.addScaledVector(right, joyDX * speed);
-    }
+      camera.position.y += velocityY;
+      velocityY += gravity;
 
-    camera.position.x = Math.max(-45, Math.min(45, camera.position.x));
-    camera.position.z = Math.max(-24, Math.min(45, camera.position.z));
-
-    // ışıkları hafif titret (konser hissi)
-    scene.traverse((obj) => {
-      if (obj.isPointLight) {
-        obj.intensity = 1.6 + Math.sin(Date.now() * 0.003 + obj.position.x) * 0.6;
+      if (camera.position.y <= currentBaseY) {
+        camera.position.y = currentBaseY;
+        velocityY = 0;
+        isGrounded = true;
       }
-    });
 
-    renderer.render(scene, camera);
-  }
-  animate();
-}
-</script>
-</body>
-</html>
+      const speed = 0.16;
+      const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+      const right = new THREE.Vector3(Math.sin(yaw + Math.PI / 2), 0, Math.cos(yaw + Math.PI / 2));
+
+      let moveVector = new THREE.Vector3();
+
+      if (moveF) moveVector.addScaledVector(forward, -speed);
+      if (moveB) moveVector.addScaledVector(forward, speed);
+      if (moveL) moveVector.addScaledVector(right, -speed);
+      if (moveR) moveVector.addScaledVector(right, speed);
+
+      if (isTouch && (joyDX !== 0 || joyDY !== 0)) {
+        moveVector.addScaledVector(forward, joyDY * speed);
+        moveVector.addScaledVector(right, joyDX * speed);
+      }
+
+      const nextX = camera.position.x + moveVector.x;
+      const nextZ = camera.position.z + moveVector.z;
+
+      const nextOnStage = (
+        nextX >= stageBounds.minX && nextX <= stageBounds.maxX &&
+        nextZ >= stageBounds.minZ && nextZ <= stageBounds.maxZ
+      );
+
+      let canMove = true;
+
+      if (nextOnStage && camera.position.y < (stageHeight + defaultEyeHeight - 0.3)) {
+        canMove = false;
+      }
+
+      nearestSeat = null;
+      let minSeatDist = Infinity;
+
+      for (let i = 0; i < seatPositions.length; i++) {
+        const seat = seatPositions[i];
+        const distToNext = Math.hypot(nextX - seat.x, nextZ - seat.z);
+
+        if (distToNext < minSeatDist) {
+          minSeatDist = distToNext;
+          if (distToNext < 1.8) nearestSeat = seat;
+        }
+
+        if (distToNext < 0.85 && camera.position.y <= defaultEyeHeight + 0.2) {
+          canMove = false;
+        }
+      }
+
+      if (canMove) {
+        camera.position.x = Math.max(-48, Math.min(48, nextX));
+        camera.position.z = Math.max(-25, Math.min(45, nextZ));
+      }
+
+      if (nearestSeat) {
+        actionPrompt.style.display = "block";
+        actionPrompt.innerText = isTouch ? "Oturmak için dokun" : "Oturmak için [E] tuşuna bas";
+      } else {
+        actionPrompt.style.display = "none"
