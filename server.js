@@ -1,7 +1,7 @@
 try {
   require("dotenv").config();
 } catch (e) {
-  // dotenv yüklü değilse Render üzerindeki ortam değişkenleriyle devam eder
+  // dotenv yuklu degilse Render uzerindeki ortam degiskenleriyle devam eder
 }
 
 const express = require("express");
@@ -19,17 +19,19 @@ const ADMIN_PASSWORD = "121624";
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
+console.log("SUPABASE_URL DEGERI:", supabaseUrl);
+console.log("KEY VAR MI:", supabaseKey ? "EVET, uzunluk: " + supabaseKey.length : "HAYIR, BOS");
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 function checkPassword(req, res) {
   if (req.body.password !== ADMIN_PASSWORD) {
-    res.status(401).json({ error: "Yanlış şifre" });
+    res.status(401).json({ error: "Yanlis sifre" });
     return false;
   }
   return true;
 }
 
-// --- Admin giriş kontrolü ---
 app.post("/admin/login", (req, res) => {
   if (req.body.password !== ADMIN_PASSWORD) {
     return res.status(401).json({ ok: false });
@@ -37,11 +39,10 @@ app.post("/admin/login", (req, res) => {
   res.json({ ok: true });
 });
 
-// --- Kullanıcı kaydı (oyundan) ---
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
   if (typeof username !== "string" || typeof password !== "string" || username.includes(" ") || username.length === 0 || password.length === 0) {
-    return res.status(400).json({ error: "Kullanıcı adı/şifre geçersiz" });
+    return res.status(400).json({ error: "Kullanici adi/sifre gecersiz" });
   }
   const { data: existing } = await supabase
     .from("users")
@@ -50,21 +51,20 @@ app.post("/register", async (req, res) => {
     .maybeSingle();
 
   if (existing) {
-    return res.status(409).json({ error: "Bu kullanıcı adı zaten alınmış" });
+    return res.status(409).json({ error: "Bu kullanici adi zaten alinmis" });
   }
 
   const { error } = await supabase.from("users").insert({ username, password });
   if (error) {
-    return res.status(500).json({ error: "Sunucu hatası" });
+    return res.status(500).json({ error: "Sunucu hatasi" });
   }
   res.json({ ok: true });
 });
 
-// --- Kullanıcı girişi (oyundan) ---
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   if (typeof username !== "string" || typeof password !== "string") {
-    return res.status(400).json({ error: "Kullanıcı adı/şifre gerekli" });
+    return res.status(400).json({ error: "Kullanici adi/sifre gerekli" });
   }
   const { data: user } = await supabase
     .from("users")
@@ -73,12 +73,11 @@ app.post("/login", async (req, res) => {
     .maybeSingle();
 
   if (!user || user.password !== password) {
-    return res.status(401).json({ error: "Kullanıcı adı veya şifre yanlış" });
+    return res.status(401).json({ error: "Kullanici adi veya sifre yanlis" });
   }
   res.json({ ok: true, username: user.username });
 });
 
-// --- Duyuru ---
 app.get("/announcement", async (req, res) => {
   const { data } = await supabase
     .from("announcement")
@@ -103,12 +102,11 @@ app.post("/announcement", async (req, res) => {
     .eq("id", 1);
 
   if (error) {
-    return res.status(500).json({ error: "Sunucu hatası" });
+    return res.status(500).json({ error: "Sunucu hatasi" });
   }
   res.json({ ok: true });
 });
 
-// --- Skor gönderme (oyundan) ---
 app.post("/score", async (req, res) => {
   const { player, points } = req.body;
   if (typeof player !== "string" || typeof points !== "number") {
@@ -138,7 +136,6 @@ app.post("/score", async (req, res) => {
   res.json({ ok: true, total });
 });
 
-// --- Admin panelden manuel puan verme ---
 app.post("/admin/give-points", async (req, res) => {
   if (!checkPassword(req, res)) return;
   const { target, points } = req.body;
@@ -153,7 +150,7 @@ app.post("/admin/give-points", async (req, res) => {
     }
   } else {
     if (typeof target !== "string" || target.includes(" ") || target.length === 0) {
-      return res.status(400).json({ error: "Kullanıcı adı geçersiz (boşluk olamaz)" });
+      return res.status(400).json({ error: "Kullanici adi gecersiz (bosluk olamaz)" });
     }
     const { data: existing } = await supabase
       .from("scores")
@@ -176,7 +173,6 @@ app.post("/admin/give-points", async (req, res) => {
   res.json({ ok: true });
 });
 
-// --- Liderlik tablosu ---
 app.get("/leaderboard", async (req, res) => {
   const { data } = await supabase
     .from("scores")
@@ -185,12 +181,10 @@ app.get("/leaderboard", async (req, res) => {
   res.json((data || []).map((s) => ({ player: s.player, points: s.points, lastPlayed: s.last_played })));
 });
 
-// --- Oyuncu silme ---
 app.delete("/score/:player", async (req, res) => {
   await supabase.from("scores").delete().eq("player", req.params.player);
   res.json({ ok: true });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor`));
-
+app.listen(PORT, () => console.log(`Server ${PORT} portunda calisiyor`));
