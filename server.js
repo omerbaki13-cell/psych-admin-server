@@ -1,9 +1,3 @@
-try {
-  require("dotenv").config();
-} catch (e) {
-  // dotenv yuklu degilse Render uzerindeki ortam degiskenleriyle devam eder
-}
-
 const express = require("express");
 const path = require("path");
 const cors = require("cors");
@@ -16,22 +10,27 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const ADMIN_PASSWORD = "121624";
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
 
-console.log("SUPABASE_URL DEGERI:", supabaseUrl);
-console.log("KEY VAR MI:", supabaseKey ? "EVET, uzunluk: " + supabaseKey.length : "HAYIR, BOS");
+console.log("SUPABASE_URL DEGERI:", SUPABASE_URL);
+console.log("SUPABASE_KEY VAR MI:", !!SUPABASE_KEY);
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error("HATA: SUPABASE_URL veya SUPABASE_SERVICE_KEY environment variable eksik!");
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function checkPassword(req, res) {
   if (req.body.password !== ADMIN_PASSWORD) {
-    res.status(401).json({ error: "Yanlis sifre" });
+    res.status(401).json({ error: "Yanlış şifre" });
     return false;
   }
   return true;
 }
 
+// --- Admin giriş kontrolü ---
 app.post("/admin/login", (req, res) => {
   if (req.body.password !== ADMIN_PASSWORD) {
     return res.status(401).json({ ok: false });
@@ -39,52 +38,80 @@ app.post("/admin/login", (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Kullanıcı kaydı (oyundan) ---
 app.post("/register", async (req, res) => {
   const { username, password } = req.body;
-  if (typeof username !== "string" || typeof password !== "string" || username.includes(" ") || username.length === 0 || password.length === 0) {
-    return res.status(400).json({ error: "Kullanici adi/sifre gecersiz" });
+  if (
+    typeof username !== "string" ||
+    typeof password !== "string" ||
+    username.includes(" ") ||
+    username.length === 0 ||
+    password.length === 0
+  ) {
+    return res.status(400).json({ error: "Kullanıcı adı/şifre geçersiz" });
   }
-  const { data: existing } = await supabase
+
+  const { data: existing, error: findError } = await supabase
     .from("users")
     .select("username")
     .ilike("username", username)
     .maybeSingle();
 
+  if (findError) {
+    return res.status(500).json({ error: "Sunucu hatası: " + findError.message });
+  }
   if (existing) {
-    return res.status(409).json({ error: "Bu kullanici adi zaten alinmis" });
+    return res.status(409).json({ error: "Bu kullanıcı adı zaten alınmış" });
   }
 
-  const { error } = await supabase.from("users").insert({ username, password });
-  if (error) {
-    return res.status(500).json({ error: "Sunucu hatasi" });
+  const { error: insertError } = await supabase.from("users").insert([{ username, password }]);
+  if (insertError) {
+    return res.status(500).json({ error: "Sunucu hatası: " + insertError.message });
   }
+
   res.json({ ok: true });
 });
 
+// --- Kullanıcı girişi (oyundan) ---
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   if (typeof username !== "string" || typeof password !== "string") {
-    return res.status(400).json({ error: "Kullanici adi/sifre gerekli" });
+    return res.status(400).json({ error: "Kullanıcı adı/şifre gerekli" });
   }
-  const { data: user } = await supabase
+
+  const { data: user, error } = await supabase
     .from("users")
     .select("username, password")
     .ilike("username", username)
     .maybeSingle();
 
-  if (!user || user.password !== password) {
-    return res.status(401).json({ error: "Kullanici adi veya sifre yanlis" });
+  if (error) {
+    return res.status(500).json({ error: "Sunucu hatası: " + error.message });
   }
+  if (!user || user.password !== password) {
+    return res.status(401).json({ error: "Kullanıcı adı veya şifre yanlış" });
+  }
+
   res.json({ ok: true, username: user.username });
 });
 
+// --- Duyuru ---
 app.get("/announcement", async (req, res) => {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("announcement")
-    .select("message, announcement_date")
-    .eq("id", 1)
+    .select("*")
+    .order("id", { ascending: false })
+    .limit(1)
     .maybeSingle();
-  res.json({ message: data?.message || "", date: data?.announcement_date || null });
+
+  if (error) {
+    return res.status(500).json({ error: "Sunucu hatası: " + error.message });
+  }
+
+  res.json({
+    message: data ? data.message : "",
+    date: data ? data.announcement_date : null,
+  });
 });
 
 app.post("/announcement", async (req, res) => {
@@ -93,49 +120,61 @@ app.post("/announcement", async (req, res) => {
   if (typeof message !== "string") {
     return res.status(400).json({ error: "message gerekli" });
   }
+
   const spaceIndex = message.indexOf(" ");
-  const formatted = spaceIndex === -1 ? message : message.substring(0, spaceIndex) + ": " + message.substring(spaceIndex + 1);
+  const formatted =
+    spaceIndex === -1 ? message : message.substring(0, spaceIndex) + ": " + message.substring(spaceIndex + 1);
 
   const { error } = await supabase
     .from("announcement")
-    .update({ message: formatted, announcement_date: new Date().toISOString() })
-    .eq("id", 1);
+    .insert([{ message: formatted, announcement_date: new Date().toISOString() }]);
 
   if (error) {
-    return res.status(500).json({ error: "Sunucu hatasi" });
+    return res.status(500).json({ error: "Sunucu hatası: " + error.message });
   }
+
   res.json({ ok: true });
 });
 
+// --- Skor gönderme (oyundan) ---
 app.post("/score", async (req, res) => {
   const { player, points } = req.body;
   if (typeof player !== "string" || typeof points !== "number") {
     return res.status(400).json({ error: "player ve points gerekli" });
   }
 
-  const { data: existing } = await supabase
+  const { data: existing, error: findError } = await supabase
     .from("scores")
-    .select("player, points")
+    .select("*")
     .eq("player", player)
     .maybeSingle();
 
-  let total;
-  if (existing) {
-    total = existing.points + points;
-    await supabase
-      .from("scores")
-      .update({ points: total, last_played: new Date().toISOString() })
-      .eq("player", player);
-  } else {
-    total = points;
-    await supabase
-      .from("scores")
-      .insert({ player, points, last_played: new Date().toISOString() });
+  if (findError) {
+    return res.status(500).json({ error: "Sunucu hatası: " + findError.message });
   }
 
-  res.json({ ok: true, total });
+  if (existing) {
+    const newPoints = existing.points + points;
+    const { error: updateError } = await supabase
+      .from("scores")
+      .update({ points: newPoints, last_played: new Date().toISOString() })
+      .eq("player", player);
+    if (updateError) {
+      return res.status(500).json({ error: "Sunucu hatası: " + updateError.message });
+    }
+    return res.json({ ok: true, total: newPoints });
+  } else {
+    const { error: insertError } = await supabase
+      .from("scores")
+      .insert([{ player, points, last_played: new Date().toISOString() }]);
+    if (insertError) {
+      return res.status(500).json({ error: "Sunucu hatası: " + insertError.message });
+    }
+    return res.json({ ok: true, total: points });
+  }
 });
 
+// --- Admin panelden manuel puan verme ---
 app.post("/admin/give-points", async (req, res) => {
   if (!checkPassword(req, res)) return;
   const { target, points } = req.body;
@@ -144,19 +183,29 @@ app.post("/admin/give-points", async (req, res) => {
   }
 
   if (target === "all" || target === "All") {
-    const { data: allScores } = await supabase.from("scores").select("player, points");
-    for (const s of allScores || []) {
-      await supabase.from("scores").update({ points: s.points + points }).eq("player", s.player);
+    const { data: allScores, error: fetchError } = await supabase.from("scores").select("*");
+    if (fetchError) {
+      return res.status(500).json({ error: "Sunucu hatası: " + fetchError.message });
+    }
+    for (const s of allScores) {
+      await supabase
+        .from("scores")
+        .update({ points: s.points + points, last_played: new Date().toISOString() })
+        .eq("player", s.player);
     }
   } else {
     if (typeof target !== "string" || target.includes(" ") || target.length === 0) {
-      return res.status(400).json({ error: "Kullanici adi gecersiz (bosluk olamaz)" });
+      return res.status(400).json({ error: "Kullanıcı adı geçersiz (boşluk olamaz)" });
     }
-    const { data: existing } = await supabase
+    const { data: existing, error: findError } = await supabase
       .from("scores")
-      .select("player, points")
+      .select("*")
       .eq("player", target)
       .maybeSingle();
+
+    if (findError) {
+      return res.status(500).json({ error: "Sunucu hatası: " + findError.message });
+    }
 
     if (existing) {
       await supabase
@@ -166,25 +215,36 @@ app.post("/admin/give-points", async (req, res) => {
     } else {
       await supabase
         .from("scores")
-        .insert({ player: target, points, last_played: new Date().toISOString() });
+        .insert([{ player: target, points, last_played: new Date().toISOString() }]);
     }
   }
 
   res.json({ ok: true });
 });
 
+// --- Liderlik tablosu ---
 app.get("/leaderboard", async (req, res) => {
-  const { data } = await supabase
-    .from("scores")
-    .select("player, points, last_played")
-    .order("points", { ascending: false });
-  res.json((data || []).map((s) => ({ player: s.player, points: s.points, lastPlayed: s.last_played })));
+  const { data, error } = await supabase.from("scores").select("*").order("points", { ascending: false });
+  if (error) {
+    return res.status(500).json({ error: "Sunucu hatası: " + error.message });
+  }
+  res.json(
+    data.map((row) => ({
+      player: row.player,
+      points: row.points,
+      lastPlayed: row.last_played,
+    }))
+  );
 });
 
+// --- Oyuncu silme ---
 app.delete("/score/:player", async (req, res) => {
-  await supabase.from("scores").delete().eq("player", req.params.player);
+  const { error } = await supabase.from("scores").delete().eq("player", req.params.player);
+  if (error) {
+    return res.status(500).json({ error: "Sunucu hatası: " + error.message });
+  }
   res.json({ ok: true });
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server ${PORT} portunda calisiyor`));
+app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor`));
