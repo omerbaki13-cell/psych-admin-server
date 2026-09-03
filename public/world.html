@@ -98,19 +98,10 @@
 <div id="announceBanner"></div>
 <audio id="bgAudio" preload="auto"></audio>
 
-<button id="adminBtn" title="Admin Girişi">🔒</button>
+<button id="adminBtn" title="Admin Paneli" style="display:none;">🔒</button>
 
 <div id="adminOverlay">
-  <div class="admin-box" id="loginPanel">
-    <h2>🔒 Admin Giriş</h2>
-    <input type="text" id="adminUser" placeholder="Kullanıcı adı" autocomplete="off">
-    <input type="password" id="adminPass" placeholder="Şifre">
-    <button onclick="adminTryLogin()">Giriş Yap</button>
-    <button class="closeBtn" onclick="closeAdminOverlay()">Kapat</button>
-    <div id="loginErr" style="color:#f88;"></div>
-  </div>
-
-  <div class="admin-box hidden" id="adminPanel">
+  <div class="admin-box" id="adminPanel">
     <h2>📢 Duyuru Gönder</h2>
     <textarea id="adminMsgInput" rows="3" placeholder="Tüm oyunculara gösterilecek mesaj..."></textarea>
     <button onclick="adminSendAnnouncement()">Gönder</button>
@@ -727,21 +718,26 @@ window.addEventListener("DOMContentLoaded", () => {
 // --- ADMIN GİRİŞ / DUYURU PANELİ ---
 const ADMIN_API = "https://psych-admin-server.onrender.com";
 const REAL_ADMIN_PASSWORD = "121624"; // Sunucudaki gerçek admin şifresi (arka planda kullanılır)
-const ADMIN_UI_USER = "baki";
-const ADMIN_UI_PASS = "okul";
+const ADMIN_ACCOUNT = "baki"; // Admin paneli sadece bu hesapla görünür
 
 const adminOverlay = document.getElementById("adminOverlay");
-const loginPanel = document.getElementById("loginPanel");
 const adminPanel = document.getElementById("adminPanel");
-const loginErr = document.getElementById("loginErr");
 const adminMsgStatus = document.getElementById("adminMsgStatus");
 const announceBanner = document.getElementById("announceBanner");
 
 // --- OYUNCU GİRİŞ / KAYIT ---
 const playerLoginOverlay = document.getElementById("playerLoginOverlay");
 const playerLoginStatus = document.getElementById("playerLoginStatus");
+let currentUsername = "";
 
-function enterWorld() {
+function enterWorld(username) {
+  currentUsername = username;
+  localStorage.setItem("psychUsername", username);
+
+  if (username.toLowerCase() === ADMIN_ACCOUNT) {
+    document.getElementById("adminBtn").style.display = "flex";
+  }
+
   playerLoginOverlay.classList.add("hidden");
   playerLoginOverlay.style.display = "none";
   try {
@@ -769,7 +765,8 @@ async function playerLogin() {
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      enterWorld();
+      localStorage.setItem("psychPassword", password);
+      enterWorld(username);
     } else {
       playerLoginStatus.style.color = "#f88";
       playerLoginStatus.innerText = "❌ " + (data.error || "Giriş başarısız.");
@@ -801,7 +798,8 @@ async function playerRegister() {
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) {
-      enterWorld();
+      localStorage.setItem("psychPassword", password);
+      enterWorld(username);
     } else {
       playerLoginStatus.style.color = "#f88";
       playerLoginStatus.innerText = "❌ " + (data.error || "Kayıt başarısız.");
@@ -812,30 +810,40 @@ async function playerRegister() {
   }
 }
 
+// Sayfa açılınca daha önce kaydedilmiş hesap varsa otomatik giriş dene
+async function tryAutoLogin() {
+  const savedUser = localStorage.getItem("psychUsername");
+  const savedPass = localStorage.getItem("psychPassword");
+  if (!savedUser || !savedPass) return;
+
+  playerLoginStatus.style.color = "#8fd";
+  playerLoginStatus.innerText = "⏳ Otomatik giriş yapılıyor...";
+  try {
+    const res = await fetch(ADMIN_API + "/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: savedUser, password: savedPass })
+    });
+    if (res.ok) {
+      enterWorld(savedUser);
+    } else {
+      localStorage.removeItem("psychUsername");
+      localStorage.removeItem("psychPassword");
+      playerLoginStatus.innerText = "";
+    }
+  } catch (err) {
+    playerLoginStatus.innerText = "";
+  }
+}
+tryAutoLogin();
 
 document.getElementById("adminBtn").addEventListener("click", () => {
   adminOverlay.classList.add("show");
-  loginPanel.classList.remove("hidden");
-  adminPanel.classList.add("hidden");
-  loginErr.innerText = "";
-  document.getElementById("adminUser").value = "";
-  document.getElementById("adminPass").value = "";
+  adminMsgStatus.innerText = "";
 });
 
 function closeAdminOverlay() {
   adminOverlay.classList.remove("show");
-}
-
-function adminTryLogin() {
-  const u = document.getElementById("adminUser").value.trim();
-  const p = document.getElementById("adminPass").value;
-  if (u === ADMIN_UI_USER && p === ADMIN_UI_PASS) {
-    loginPanel.classList.add("hidden");
-    adminPanel.classList.remove("hidden");
-    adminMsgStatus.innerText = "";
-  } else {
-    loginErr.innerText = "❌ Kullanıcı adı veya şifre yanlış";
-  }
 }
 
 async function readAdminError(res) {
