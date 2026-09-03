@@ -193,6 +193,24 @@ app.post("/announcement", async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- ŞARKI ÇALMA (Admin panelden seçilen sabit şarkılar) ---
+let currentSong = { song: null, startedAt: null };
+
+app.get("/song", (req, res) => {
+  res.json(currentSong);
+});
+
+app.post("/song", (req, res) => {
+  if (!checkPassword(req, res)) return;
+  const { song } = req.body;
+  const allowed = ["sarki1.mp3","sarki2.mp3","sarki3.mp3","sarki4.mp3","sarki5.mp3","sarki6.mp3"];
+  if (!allowed.includes(song)) {
+    return res.status(400).json({ error: "Geçersiz şarkı adı" });
+  }
+  currentSong = { song, startedAt: Date.now() };
+  res.json({ ok: true });
+});
+
 // --- Skor gönderme (oyundan) ---
 app.post("/score", async (req, res) => {
   if (!requireSupabase(res)) return;
@@ -309,3 +327,4 @@ app.delete("/score/:player", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor`));
+
