@@ -7,13 +7,13 @@
   body { font-family: sans-serif; background:#1e1e2f; color:#eee; max-width:700px; margin:40px auto; padding:0 16px; }
   h1 { color:#ff5fa2; }
   section { background:#2a2a40; padding:16px; border-radius:10px; margin-bottom:24px; }
-  textarea, input { width:100%; box-sizing:border-box; padding:8px; border-radius:6px; border:none; margin-top:8px; font-size:14px; }
+  textarea, input, select { width:100%; box-sizing:border-box; padding:8px; border-radius:6px; border:none; margin-top:8px; font-size:14px; }
   button { margin-top:10px; padding:8px 16px; border:none; border-radius:6px; background:#ff5fa2; color:#fff; font-weight:bold; cursor:pointer; }
   button:hover { background:#ff3d91; }
   table { width:100%; border-collapse:collapse; margin-top:12px; }
   th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #444; }
   .del { background:#c0392b; padding:4px 10px; font-size:12px; }
-  #status, #pointStatus { margin-top:8px; font-size:13px; color:#8fd; }
+  #status, #pointStatus, #songStatus { margin-top:8px; font-size:13px; color:#8fd; }
   #loginBox { max-width:320px; margin:100px auto; text-align:center; }
   .hidden { display:none; }
 </style>
@@ -43,6 +43,20 @@
       <input type="number" id="pointsInput" placeholder="Puan miktarı (örn. 50)">
       <button onclick="givePoints()">Puanı Gönder</button>
       <div id="pointStatus"></div>
+    </section>
+
+    <section>
+      <h2>🎵 Şarkı Çal</h2>
+      <select id="songSelect">
+        <option value="sarki1.mp3">Şarkı 1</option>
+        <option value="sarki2.mp3">Şarkı 2</option>
+        <option value="sarki3.mp3">Şarkı 3</option>
+        <option value="sarki4.mp3">Şarkı 4</option>
+        <option value="sarki5.mp3">Şarkı 5</option>
+        <option value="sarki6.mp3">Şarkı 6</option>
+      </select>
+      <button onclick="playSong()">Çal</button>
+      <div id="songStatus"></div>
     </section>
 
     <section>
@@ -150,6 +164,32 @@ async function givePoints() {
   } else {
     statusEl.style.color = "#f88";
     statusEl.innerText = "❌ " + (await readError(res));
+  }
+}
+
+async function playSong() {
+  const song = document.getElementById("songSelect").value;
+  const statusEl = document.getElementById("songStatus");
+  statusEl.style.color = "#8fd";
+  statusEl.innerText = "⏳ Gönderiliyor...";
+
+  try {
+    const res = await fetch(API + "/song", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ song, password: ADMIN_PASS })
+    });
+
+    if (res.ok) {
+      statusEl.style.color = "#8fd";
+      statusEl.innerText = "✅ Şarkı gönderildi, oyuncularda çalmaya başlayacak.";
+    } else {
+      statusEl.style.color = "#f88";
+      statusEl.innerText = "❌ " + (await readError(res));
+    }
+  } catch (err) {
+    statusEl.style.color = "#f88";
+    statusEl.innerText = "❌ Ağ hatası: " + err.message;
   }
 }
 
