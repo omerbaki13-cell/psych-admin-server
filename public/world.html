@@ -205,8 +205,7 @@ function startWorld() {
   function createSpeakerTower(xPos) {
     const group = new THREE.Group();
     const towerBody = new THREE.Mesh(new THREE.BoxGeometry(2.2, 9, 2), boxMat);
-    towerBody.position.set(0, 6, 0
-);
+    towerBody.position.set(0, 6, 0);
     group.add(towerBody);
 
     for (let y = 2.2; y <= 9.8; y += 1.8) {
@@ -548,8 +547,7 @@ function startWorld() {
 
     leftMoveZone.addEventListener("touchstart", (e) => {
       if (joyActive) return;
-      const t = 
-e.changedTouches[0];
+      const t = e.changedTouches[0];
       joyTouchId = t.identifier;
       joyActive = true;
       joyStartX = t.clientX;
@@ -769,7 +767,7 @@ async function playerLogin() {
   playerLoginStatus.style.color = "#8fd";
   playerLoginStatus.innerText = "⏳ Giriş yapılıyor...";
   try {
-    const res = await fetch(API + "/login", {
+    const res = await fetch(ADMIN_API + "/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password })
@@ -801,7 +799,7 @@ async function playerRegister() {
   playerLoginStatus.style.color = "#8fd";
   playerLoginStatus.innerText = "⏳ Kayıt olunuyor...";
   try {
-    const res = await fetch(API + "/register", {
+    const res = await fetch(ADMIN_API + "/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password })
