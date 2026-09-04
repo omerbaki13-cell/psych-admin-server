@@ -211,6 +211,25 @@ app.post("/song", (req, res) => {
   res.json({ ok: true });
 });
 
+// --- VİDEO OYNATMA (Admin panelden seçilen sabit videolar) ---
+let currentVideo = { video: null, startedAt: null };
+
+app.get("/video", (req, res) => {
+  res.json(currentVideo);
+});
+
+app.post("/video", (req, res) => {
+  if (!checkPassword(req, res)) return;
+  const { video } = req.body;
+  const allowed = ["video1.mp4","video2.mp4","video3.mp4","video4.mp4","video5.mp4"];
+  if (!allowed.includes(video)) {
+    return res.status(400).json({ error: "Geçersiz video adı" });
+  }
+  currentVideo = { video, startedAt: Date.now() };
+  res.json({ ok: true });
+});
+
+
 // --- Skor gönderme (oyundan) ---
 app.post("/score", async (req, res) => {
   if (!requireSupabase(res)) return;
@@ -327,4 +346,3 @@ app.delete("/score/:player", async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor`));
-
