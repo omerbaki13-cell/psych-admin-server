@@ -144,6 +144,19 @@
     <div id="adminSongStatus"></div>
 
     <hr>
+    <h2>🌤 Hava Durumu</h2>
+    <select id="adminWeatherSelect">
+      <option value="sunrise">🌅 Gün Doğumu</option>
+      <option value="noon">☀️ Öğlen</option>
+      <option value="afternoon">🌆 İkindi</option>
+      <option value="sunset">🌇 Akşam</option>
+      <option value="night">🌙 Gece</option>
+      <option value="eclipse">🌒 Güneş Tutulması</option>
+    </select>
+    <button onclick="adminSetWeather()">Uygula (Herkese)</button>
+    <div id="adminWeatherStatus"></div>
+
+    <hr>
     <h2>🎬 Video Oynat</h2>
     <select id="adminVideoSelect">
       <option value="video1.mp4">Video 1</option>
@@ -162,8 +175,8 @@
       <tbody></tbody>
     </table>
 
-    <button class="closeBtn" onclick="closeAdminOverlay()">Kapat</button>
-    <button id="logoutBtn" onclick="logoutAccount()" style="background:#c0392b;">🟥 Çıkış Yap</button>
+    <button class="closeBtn hidden" onclick="closeAdminOverlay()">Kapat</button>
+    <button id="logoutBtn" onclick="closeAdminOverlay()" style="background:#c0392b;">🟥 Çıkış Yap</button>
   </div>
 </div>
 
@@ -988,6 +1001,30 @@ async function adminDeletePlayer(player) {
   } catch (_) {}
 }
 
+async function adminSetWeather() {
+  const type = document.getElementById("adminWeatherSelect").value;
+  const statusEl = document.getElementById("adminWeatherStatus");
+  statusEl.style.color = "#8fd";
+  statusEl.innerText = "⏳ Gönderiliyor...";
+  try {
+    const res = await fetch(ADMIN_API + "/weather", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, password: REAL_ADMIN_PASSWORD })
+    });
+    if (res.ok) {
+      statusEl.style.color = "#8fd";
+      statusEl.innerText = "✅ Hava durumu gönderildi.";
+    } else {
+      statusEl.style.color = "#f88";
+      statusEl.innerText = "❌ " + (await readAdminError(res));
+    }
+  } catch (err) {
+    statusEl.style.color = "#f88";
+    statusEl.innerText = "❌ Ağ hatası: " + err.message;
+  }
+}
+
 async function adminPlayVideo() {
   const video = document.getElementById("adminVideoSelect").value;
   const statusEl = document.getElementById("adminVideoStatus");
@@ -1134,6 +1171,28 @@ async function checkVideo() {
 
 checkVideo();
 setInterval(checkVideo, 5000);
+
+// --- HAVA DURUMU (tüm oyunculara otomatik uygulama) ---
+let lastWeatherStartedAt = null;
+
+async function checkWeather() {
+  try {
+    const res = await fetch(ADMIN_API + "/weather");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.type && data.startedAt !== lastWeatherStartedAt) {
+      lastWeatherStartedAt = data.startedAt;
+      if (typeof applyTimeOfDay === "function") applyTimeOfDay(data.type);
+      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+      const idMap = { sunrise:'btn-sunrise', noon:'btn-noon', afternoon:'btn-afternoon', sunset:'btn-sunset', night:'btn-night', eclipse:'btn-eclipse' };
+      const btn = document.getElementById(idMap[data.type]);
+      if (btn) btn.classList.add('active');
+    }
+  } catch (_) {}
+}
+
+checkWeather();
+setInterval(checkWeather, 5000);
 </script>
 </body>
 </html>
