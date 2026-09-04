@@ -34,8 +34,14 @@
   #adminBtn { position:fixed; top:14px; right:14px; z-index:50; width:40px; height:40px; border-radius:50%; background:rgba(0,0,0,0.7); border:1px solid rgba(255,255,255,0.3); color:#fff; font-size:18px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
   #adminOverlay { position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:200; display:none; align-items:center; justify-content:center; padding:20px; box-sizing:border-box; }
   #adminOverlay.show { display:flex; }
-  .admin-box { background:#1e1e2f; color:#eee; border-radius:12px; padding:20px; width:100%; max-width:340px; font-family:sans-serif; box-sizing:border-box; }
-  .admin-box h2 { margin:0 0 14px; color:#ff5fa2; font-size:18px; }
+  .admin-box { background:#1e1e2f; color:#eee; border-radius:12px; padding:20px; width:100%; max-width:340px; font-family:sans-serif; box-sizing:border-box; max-height:85vh; overflow-y:auto; }
+  .admin-box h2 { margin:18px 0 10px; color:#ff5fa2; font-size:16px; }
+  .admin-box h2:first-child { margin-top:0; }
+  .admin-box select { width:100%; box-sizing:border-box; padding:9px; border-radius:6px; border:none; margin-top:8px; font-size:14px; font-family:sans-serif; }
+  .admin-box table { width:100%; border-collapse:collapse; margin-top:8px; font-size:12px; }
+  .admin-box th, .admin-box td { text-align:left; padding:5px 4px; border-bottom:1px solid #3a3a55; }
+  .admin-box .del { background:#c0392b; padding:3px 8px; font-size:11px; margin-top:0; width:auto; }
+  .admin-box hr { border:none; border-top:1px solid #3a3a55; margin:16px 0; }
   .admin-box input, .admin-box textarea { width:100%; box-sizing:border-box; padding:9px; border-radius:6px; border:none; margin-top:8px; font-size:14px; font-family:sans-serif; }
   .admin-box textarea { resize:vertical; }
   .admin-box button { margin-top:12px; padding:9px 16px; border:none; border-radius:6px; background:#ff5fa2; color:#fff; font-weight:bold; cursor:pointer; width:100%; }
@@ -105,8 +111,36 @@
     <h2>📢 Duyuru Gönder</h2>
     <textarea id="adminMsgInput" rows="3" placeholder="Tüm oyunculara gösterilecek mesaj..."></textarea>
     <button onclick="adminSendAnnouncement()">Gönder</button>
-    <button class="closeBtn" onclick="closeAdminOverlay()">Kapat</button>
     <div id="adminMsgStatus"></div>
+
+    <hr>
+    <h2>🏆 Puan Ver</h2>
+    <input type="text" id="adminTargetInput" placeholder="Kullanıcı adı (boşluksuz) veya 'All' yaz">
+    <input type="number" id="adminPointsInput" placeholder="Puan miktarı (örn. 50)">
+    <button onclick="adminGivePoints()">Puanı Gönder</button>
+    <div id="adminPointStatus"></div>
+
+    <hr>
+    <h2>🎵 Şarkı Çal</h2>
+    <select id="adminSongSelect">
+      <option value="sarki1.mp3">Şarkı 1</option>
+      <option value="sarki2.mp3">Şarkı 2</option>
+      <option value="sarki3.mp3">Şarkı 3</option>
+      <option value="sarki4.mp3">Şarkı 4</option>
+      <option value="sarki5.mp3">Şarkı 5</option>
+      <option value="sarki6.mp3">Şarkı 6</option>
+    </select>
+    <button onclick="adminPlaySong()">Çal</button>
+    <div id="adminSongStatus"></div>
+
+    <hr>
+    <h2>🏆 Liderlik Tablosu</h2>
+    <table id="adminLeaderboardTable">
+      <thead><tr><th>#</th><th>Oyuncu</th><th>Puan</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+
+    <button class="closeBtn" onclick="closeAdminOverlay()">Kapat</button>
   </div>
 </div>
 
@@ -840,11 +874,97 @@ tryAutoLogin();
 document.getElementById("adminBtn").addEventListener("click", () => {
   adminOverlay.classList.add("show");
   adminMsgStatus.innerText = "";
+  adminLoadLeaderboard();
 });
 
 function closeAdminOverlay() {
   adminOverlay.classList.remove("show");
 }
+
+async function adminGivePoints() {
+  const target = document.getElementById("adminTargetInput").value.trim();
+  const points = parseInt(document.getElementById("adminPointsInput").value, 10);
+  const statusEl = document.getElementById("adminPointStatus");
+
+  if (!target || isNaN(points)) {
+    statusEl.style.color = "#f88";
+    statusEl.innerText = "❌ Kullanıcı adı ve puan gerekli.";
+    return;
+  }
+  if (target.toLowerCase() !== "all" && target.includes(" ")) {
+    statusEl.style.color = "#f88";
+    statusEl.innerText = "❌ Kullanıcı adında boşluk olamaz.";
+    return;
+  }
+
+  statusEl.style.color = "#8fd";
+  statusEl.innerText = "⏳ Gönderiliyor...";
+  try {
+    const res = await fetch(ADMIN_API + "/admin/give-points", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target: target.toLowerCase() === "all" ? "all" : target, points, password: REAL_ADMIN_PASSWORD })
+    });
+    if (res.ok) {
+      statusEl.style.color = "#8fd";
+      statusEl.innerText = "✅ Puan gönderildi.";
+      adminLoadLeaderboard();
+    } else {
+      statusEl.style.color = "#f88";
+      statusEl.innerText = "❌ " + (await readAdminError(res));
+    }
+  } catch (err) {
+    statusEl.style.color = "#f88";
+    statusEl.innerText = "❌ Ağ hatası: " + err.message;
+  }
+}
+
+async function adminPlaySong() {
+  const song = document.getElementById("adminSongSelect").value;
+  const statusEl = document.getElementById("adminSongStatus");
+  statusEl.style.color = "#8fd";
+  statusEl.innerText = "⏳ Gönderiliyor...";
+  try {
+    const res = await fetch(ADMIN_API + "/song", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ song, password: REAL_ADMIN_PASSWORD })
+    });
+    if (res.ok) {
+      statusEl.style.color = "#8fd";
+      statusEl.innerText = "✅ Şarkı gönderildi.";
+    } else {
+      statusEl.style.color = "#f88";
+      statusEl.innerText = "❌ " + (await readAdminError(res));
+    }
+  } catch (err) {
+    statusEl.style.color = "#f88";
+    statusEl.innerText = "❌ Ağ hatası: " + err.message;
+  }
+}
+
+async function adminLoadLeaderboard() {
+  try {
+    const res = await fetch(ADMIN_API + "/leaderboard");
+    const data = await res.json();
+    const tbody = document.querySelector("#adminLeaderboardTable tbody");
+    tbody.innerHTML = "";
+    data.forEach((row, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${i+1}</td><td>${row.player}</td><td>${row.points}</td>
+        <td><button class="del" onclick="adminDeletePlayer('${row.player}')">Sil</button></td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (_) {}
+}
+
+async function adminDeletePlayer(player) {
+  try {
+    await fetch(ADMIN_API + "/score/" + encodeURIComponent(player), { method: "DELETE" });
+    adminLoadLeaderboard();
+  } catch (_) {}
+}
+
 
 async function readAdminError(res) {
   let detail = "";
