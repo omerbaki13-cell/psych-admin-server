@@ -229,6 +229,25 @@ app.post("/video", (req, res) => {
   res.json({ ok: true });
 });
 
+// --- HAVA DURUMU (Admin panelden herkese yayınlanan zaman/gökyüzü) ---
+let currentWeather = { type: null, startedAt: null };
+
+app.get("/weather", (req, res) => {
+  res.json(currentWeather);
+});
+
+app.post("/weather", (req, res) => {
+  if (!checkPassword(req, res)) return;
+  const { type } = req.body;
+  const allowed = ["sunrise","noon","afternoon","sunset","night","eclipse"];
+  if (!allowed.includes(type)) {
+    return res.status(400).json({ error: "Geçersiz hava durumu tipi" });
+  }
+  currentWeather = { type, startedAt: Date.now() };
+  res.json({ ok: true });
+});
+
+
 
 // --- Skor gönderme (oyundan) ---
 app.post("/score", async (req, res) => {
